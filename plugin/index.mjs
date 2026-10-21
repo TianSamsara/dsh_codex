@@ -10,7 +10,10 @@ export default class CodexBridge extends TypertRemoteService {
     super(ctx, 'codexBridge');
     for (const initialize of initializers) initialize.call(this);
     this.updater = new RepositoryUpdater({ dshHome: ctx.profileContext.home, profileDir: ctx.profileContext.dir });
-    this.updateReady = this.updater.init();
+    this.updateReady = this.updater.init().catch(error => {
+      this.updater.state.status = 'error'; this.updater.state.message = '插件版本信息暂时不可用，请稍后检查更新或重启 Harness';
+      ctx.logger.warn('Codex plugin update metadata: %s', error.message);
+    });
     this.manager = new BridgeManager({ dshHome: ctx.profileContext.home,
       onConnected: async connection => {
         if (this.disposed) throw new Error('插件已停用，已取消配置写入');

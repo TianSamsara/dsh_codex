@@ -32,6 +32,7 @@ test('repository checks use a fixed repo and immutable commit manifest without s
   assert.equal(f.calls[1].url, `https://raw.githubusercontent.com/TianSamsara/dsh_codex/${latest}/package.json`);
   assert.equal(JSON.stringify(state).includes(secret), false);
   assert.equal(installedCommit(lockText(before)), before); assert.equal(compareVersions('0.10.0', '0.9.9'), 1);
+  assert.equal(installedCommit(lockText(before).replace(before, before + '(peer@1.0.0)')), before);
 });
 
 test('same version commit changes are detected; identical and older versions are retained', async t => {

@@ -46,7 +46,7 @@ export async function readRepository(fetcher = fetch, headReader = gitHead) {
   return { commit: sha, version: manifest.version };
 }
 export function installedCommit(lock) {
-  return lock.match(/dsh-plugin-codex-local-bridge:\r?\n(?: {8}[^\n]*\r?\n)*? {8}version: https:\/\/codeload\.github\.com\/TianSamsara\/dsh_codex\/tar\.gz\/([a-f0-9]{40})(?:\s|$)/)?.[1] || '';
+  return lock.match(/dsh-plugin-codex-local-bridge:\r?\n(?: {8}[^\n]*\r?\n)*? {8}version: ['"]?https:\/\/codeload\.github\.com\/TianSamsara\/dsh_codex\/tar\.gz\/([a-f0-9]{40})(?=[\s('"]|$)/)?.[1] || '';
 }
 export function compareVersions(a, b) {
   const [coreA, preA] = a.split(/-(.*)/s), [coreB, preB] = b.split(/-(.*)/s);
@@ -114,6 +114,7 @@ export class RepositoryUpdater {
   async check() {
     const current = await this.status();
     if (this.busy || running(current.status)) throw new Error('正在更新插件，请稍候');
+    if (!VERSION.test(this.state.currentVersion)) await this.init();
     this.ignoredJob = current.jobId;
     this.busy = true; this.state.status = 'checking'; this.state.message = '正在读取 GitHub main 分支';
     try {
