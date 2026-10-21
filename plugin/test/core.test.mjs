@@ -110,8 +110,8 @@ test('client contributes visible panels and forwards actions through its own Rem
   const React = { Component: class {}, createElement: (...args) => args };
   const context = vm.createContext({ setInterval: () => 1, clearInterval() {}, window: { __ModuleLoader__: { load: item => { plugin = item.factory(name => { assert.equal(name, 'react'); return React; }); } } }, document: { createElement: () => ({ dataset: {}, remove() {} }), head: { appendChild() {} } } });
   vm.runInContext(await fs.readFile(new URL('../client.js', import.meta.url), 'utf8'), context);
-  const remote = Object.fromEntries(['status', 'discover', 'connect', 'forget', 'reconnect'].map(method => [method, async (...args) => { calls.push({ method, args }); return { ok: true }; }]));
-  const ctx = { remote: { $mount: async info => { assert.equal(info.descriptors.length, 5); } },
+  const remote = Object.fromEntries(['status', 'discover', 'connect', 'autoSetup', 'forget', 'reconnect'].map(method => [method, async (...args) => { calls.push({ method, args }); return { ok: true }; }]));
+  const ctx = { remote: { $mount: async info => { assert.equal(info.descriptors.length, 6); } },
     get: key => { assert.equal(key, 'remote.codexBridge'); return remote; }, effect: effect => effect(),
     slots: { inject: (_name, effect) => effect(), register: (options, component) => { rows.push({ options, component }); return () => {}; } } };
   await plugin.apply(ctx);
@@ -121,4 +121,5 @@ test('client contributes visible panels and forwards actions through its own Rem
   await face.api.connect({ root: 'local' });
   assert.equal(calls[0].method, 'reconnect');
   assert.equal(calls.at(-1).method, 'connect'); assert.equal(calls.at(-1).args[0].root, 'local');
+  await face.api.autoSetup(); assert.equal(calls.at(-1).method, 'autoSetup');
 });

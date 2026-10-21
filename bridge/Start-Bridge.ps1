@@ -11,7 +11,11 @@ if (Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $settings.port -Stat
 $nodePath = $settings.node
 if (-not (Test-Path -LiteralPath $nodePath)) { $nodePath = (Get-Command node -ErrorAction Stop).Source }
 if (-not (Test-Path -LiteralPath $settings.codex -PathType Leaf)) { throw 'Codex path changed. Run Setup-Bridge.ps1 again to locate the current executable.' }
-$child = Start-Process -FilePath $nodePath -ArgumentList ('"' + (Join-Path $PSScriptRoot 'server.mjs') + '"') -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $PSScriptRoot 'bridge.log') -RedirectStandardError (Join-Path $PSScriptRoot 'bridge.error.log') -PassThru
+$savedNodeMode = $env:ELECTRON_RUN_AS_NODE
+try {
+    if ($settings.electronNode) { $env:ELECTRON_RUN_AS_NODE = '1' }
+    $child = Start-Process -FilePath $nodePath -ArgumentList ('"' + (Join-Path $PSScriptRoot 'server.mjs') + '"') -WorkingDirectory $PSScriptRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $PSScriptRoot 'bridge.log') -RedirectStandardError (Join-Path $PSScriptRoot 'bridge.error.log') -PassThru
+} finally { $env:ELECTRON_RUN_AS_NODE = $savedNodeMode }
 $child.Id | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'bridge.pid')
 for ($attempt = 0; $attempt -lt 30; $attempt++) {
     Start-Sleep -Milliseconds 200

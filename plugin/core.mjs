@@ -4,6 +4,7 @@ import os from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { managedRoot, prepareRuntime } from './bootstrap.mjs';
 
 const EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 const safeError = error => String(error?.message || error).replace(/Bearer\s+\S+|[a-f0-9]{48,}/gi, '[隐藏密钥]').slice(0, 240);
@@ -40,12 +41,17 @@ export async function inspectRoot(input) {
   const key = (await fs.readFile(keyFile, 'utf8')).trim();
   if (!/^[a-f0-9]{64}$/i.test(key)) throw new Error('本地连接密钥文件格式错误');
   const launcherSource = await fs.readFile(launcher, 'utf8');
+  const fingerprint = createHash('sha256').update(source).update('\0').update(launcherSource);
+  for (const file of ['client.mjs', 'manager.mjs', 'protocol.mjs']) {
+    try { fingerprint.update('\0' + file + '\0').update(await fs.readFile(path.join(root, file))); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   return { root, server, launcher, key, keyFile, baseURL: localBaseURL(`http://127.0.0.1:${config.port}/v1`),
-    fingerprint: createHash('sha256').update(source).update('\0').update(launcherSource).digest('hex') };
+    fingerprint: fingerprint.digest('hex') };
 }
 
 export async function searchRoots({ home = os.homedir(), dshHome, remembered, extraRoots = [] } = {}) {
-  const roots = new Set([remembered?.root, process.env.DSH_CODEX_BRIDGE_ROOT, ...extraRoots, fileURLToPath(new URL('../bridge/', import.meta.url))].filter(Boolean));
+  const roots = new Set([remembered?.root, process.env.DSH_CODEX_BRIDGE_ROOT, ...extraRoots, dshHome && managedRoot(dshHome), fileURLToPath(new URL('../bridge/', import.meta.url))].filter(Boolean));
   const documentRoot = path.join(home, 'Documents', 'Codex');
   let dates = [];
   try { dates = (await fs.readdir(documentRoot, { withFileTypes: true })).filter(d => d.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(d.name)).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 20); } catch {}
@@ -94,8 +100,8 @@ function startLauncher(candidate) {
 }
 
 export class BridgeManager {
-  constructor({ home = os.homedir(), dshHome = process.env.DSH_HOME || path.join(home, '.dsh'), onConnected = async () => {}, fetcher = fetch, launcher = startLauncher, extraRoots = [] } = {}) {
-    Object.assign(this, { home, dshHome, onConnected, fetcher, launcher, extraRoots });
+  constructor({ home = os.homedir(), dshHome = process.env.DSH_HOME || path.join(home, '.dsh'), onConnected = async () => {}, fetcher = fetch, launcher = startLauncher, initializer = prepareRuntime, extraRoots = [] } = {}) {
+    Object.assign(this, { home, dshHome, onConnected, fetcher, launcher, initializer, extraRoots });
     this.file = path.join(dshHome, 'storages', 'codex-local-bridge', 'connection.json');
     this.memory = {}; this.candidates = [];
     this.state = { phase: 'idle', root: '', baseURL: '', model: '', effort: '', models: [], candidates: [], remembered: false, autoConnect: true, autoStart: true, makeDefault: true, lastError: '', lastConnected: null };
@@ -127,13 +133,32 @@ export class BridgeManager {
       const candidates = await this.find();
       const selected = candidates.find(c => c.root === this.memory.root) || candidates[0];
       if (selected) Object.assign(this.state, { root: selected.root, baseURL: selected.baseURL, phase: 'found' });
-      else Object.assign(this.state, { phase: 'offline', lastError: '未找到 Harness 桥接，请填写包含 server.mjs 和 Start-Bridge.ps1 的桥接目录' });
+      else Object.assign(this.state, { phase: 'offline', lastError: '未找到桥接，点击“自动初始化并连接”即可创建；已有桥接可在高级设置中选择' });
       return this.status();
     });
   }
   async connect(request = {}, automatic = false) {
     if (!request || typeof request !== 'object' || Array.isArray(request)) throw new Error('连接参数格式错误');
+    return this.exclusive(() => this.connectInner(request, automatic));
+  }
+  async autoSetup() {
     return this.exclusive(async () => {
+      this.state.phase = 'initializing'; this.state.lastError = ''; this.state.setupMessage = '正在检查已有的桥接';
+      const candidates = await this.find();
+      let selected = candidates.find(c => c.root === this.memory.root);
+      if (!selected && candidates.length === 1) selected = candidates[0];
+      if (!selected && candidates.length > 1) throw new Error('找到多个桥接，请在高级设置中选择桥接目录，再点击“保存并连接”');
+      if (!selected) {
+        const result = await this.initializer({ dshHome: this.dshHome, onProgress: message => { this.state.setupMessage = message; } });
+        selected = await inspectRoot(result.root);
+      }
+      this.state.setupMessage = '正在启动桥接并获取模型';
+      const result = await this.connectInner({ ...this.memory, root: selected.root, autoStart: true,
+        model: this.memory.model || this.state.model, effort: this.memory.effort ?? this.state.effort });
+      this.state.setupMessage = ''; return { ...result, setupMessage: '' };
+    });
+  }
+  async connectInner(request, automatic = false) {
       this.state.phase = 'connecting'; this.state.lastError = '';
       const root = request.root || this.memory.root || this.state.root;
       const candidate = await inspectRoot(root);
@@ -171,7 +196,6 @@ export class BridgeManager {
       this.memory = memory;
       Object.assign(this.state, bridgeFeatures(health), { phase: 'connected', root: candidate.root, baseURL: candidate.baseURL, model, effort, models, remembered: true, autoConnect, autoStart, makeDefault, lastError: '', lastConnected: new Date().toISOString() });
       return this.status();
-    });
   }
   async forget() {
     return this.exclusive(async () => {

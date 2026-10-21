@@ -35,10 +35,11 @@ export default class CodexBridge extends TypertRemoteService {
   async status() { await this.ready; return this.manager.status(); }
   async discover() { await this.ready; return this.manager.discover(); }
   async connect(request) { await this.ready; return this.manager.connect(request); }
+  async autoSetup() { await this.ready; return this.manager.autoSetup(); }
   async forget() { await this.ready; return this.manager.forget(); }
   async reconnect() { await this.ready; return this.manager.reconnect(); }
 }
 
 // Use the public stage-3 decorator API from plain ESM; no private descriptor manipulation.
-for (const method of ['status', 'discover', 'connect', 'forget', 'reconnect'])
+for (const method of ['status', 'discover', 'connect', 'autoSetup', 'forget', 'reconnect'])
   Remote(method)(CodexBridge.prototype[method], { kind: 'method', name: method, static: false, private: false, addInitializer: initialize => initializers.push(initialize) });

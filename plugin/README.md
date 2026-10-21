@@ -1,6 +1,6 @@
 # Codex 本地桥接：DeepSeek Harness 插件
 
-版本 **0.2.1**，2026-10-21。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。桥接服务器见本仓库 `../bridge`；面板显示桥接版本、进程复用和会话续接状态。
+版本 **0.3.0**，2026-10-21。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。面板可自动创建并启动桥接，显示桥接版本、进程复用和会话续接状态。
 
 在侧边栏增加 **Codex 桥接**，在 **插件 → 已安装插件 → Codex 本地桥接** 中提供相同的配置面板。按钮包括自动发现、连接并记住、启动并连接和忘记此连接；支持模型、思考强度、启动时自动连接、桥接离线时自动启动，以及设为新会话默认模型。
 
@@ -18,12 +18,18 @@
 
 ## 连接
 
+首次使用直接点击 **自动初始化并连接**：没有目录时自动创建桥接和随机密钥、检测 Codex、启动并获取模型；有已记住的桥接时直接复用。无需另装 Node.js；可用 Harness 的内置 Electron/Node 运行服务。请先在 Codex 完成 ChatGPT 登录。
+
+自动目录为 `$DSH_HOME/storages/codex-local-bridge/runtime`，位于可写的用户存储，独立于 Git 插件缓存。已有密钥、配置和未知文件不会被覆盖。端口从 17654 起选择空闲端口。当前自动初始化支持 Windows。
+
+手动连接可展开 **高级设置**：
+
 1. 打开侧边栏“Codex 桥接”，点击“自动发现”。
 2. 选中桥接目录，或手动填写包含 `server.mjs`、`settings.json`、`Start-Bridge.ps1` 和 `state/local-key` 的目录。
 3. 点击“连接并记住”。离线时可点击“启动并连接”。首次会自动读取本机密钥和模型列表，不需要复制密钥。
 4. 选择模型和思考强度，再次点击“连接并记住”。已有会话在输入框模型菜单中手动切换，新会话按默认模型设置使用。
 
-此插件管理**已有的 Harness Codex 桥接**，不内置桥接服务器。要求 `/health` 返回 `service: dsh-codex-bridge`，并支持 `/v1/models` 和 Harness 所需的对话、流式输出与工具调用接口。学习通的 `17653` 桥接只接受练习题格式，不能直接替代 Harness 桥接；本机已配置的 Harness 桥接使用 `17654`。插件不会把两者混接。
+Git 安装包包含用于初始化的桥接源码，也可管理**已有的 Harness Codex 桥接**。要求 `/health` 返回 `service: dsh-codex-bridge`，并支持 `/v1/models` 和 Harness 所需的对话、流式输出与工具调用接口。学习通的 `17653` 桥接不能替代 Harness 桥接。
 
 ## 发现与记忆
 
@@ -44,6 +50,6 @@ node --test test/*.test.mjs
 
 测试覆盖发现边界、记忆恢复、离线启动、脚本变更保护、模型/档位校验、错误与密钥隐藏，以及客户端入口与动作绑定。自动连接仅获取模型目录，不运行模型推理或消耗测试题额度。
 
-本机验证：安装器成功注册插件，读取 7 个模型；原版面板“连接并记住”和思考强度菜单已验证。本仓库桥接与插件共 22 项自动测试通过，真实 HTTP 已验证进程和原生工具会话续接；0.2.1 已通过 GitHub 仓库来源实际安装验证。
+本机验证：29 项自动测试通过；真实空目录初始化使用 Harness 内置 Electron 运行时启动服务、读取 7 个模型，重复执行保留目录和密钥；真实 HTTP 已验证进程与工具会话续接。
 
 实现使用 Harness 的 Cordis Service、公开 Remote 装饰器、客户端 Remote 挂载和 UI Slots，不修改安装目录或 `app.asar`。参考：[官方插件入门](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.md)、[客户端模块](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md)、[插件配置面板](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-plugin-manager/README.md)。
