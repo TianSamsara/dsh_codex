@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.1.1';
 export const stable = value => JSON.stringify(sort(value));
 function sort(value) {
   if (Array.isArray(value)) return value.map(sort);

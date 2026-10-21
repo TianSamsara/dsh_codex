@@ -18,6 +18,7 @@ export function createBridge({ key, port = 17654, manager, timeoutMs = 600000, l
     if (req.method === 'GET' && req.url === '/health') return json(200, { service: 'dsh-codex-bridge', auth: 'ChatGPT subscription', version: VERSION, active, draining, capabilities: { warm_process: true, metadata_cache: true, session_continuation: true }, pool: manager.health() });
     // An authenticated drain blocks new work while existing HTTP operations finish.
     if (req.method === 'POST' && req.url === '/admin/drain') { drainUntil = Date.now() + 90000; return json(200, { draining: true, active }); }
+    if (req.method === 'POST' && req.url === '/admin/resume') { drainUntil = 0; return json(200, { draining: false, active }); }
     const isModels = req.method === 'GET' && /^\/v1\/models(?:\?refresh=1)?$/.test(req.url);
     const isAnswer = req.method === 'POST' && req.url === '/v1/chat/completions';
     if (!isModels && !isAnswer) return json(404, { error: { message: 'Unknown endpoint' } });

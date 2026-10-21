@@ -104,3 +104,17 @@ test('Git discovery uses an existing executable and never builds shell commands'
   assert.notEqual(file, 'git'); assert.equal(calls, 2);
   assert.throws(() => installArguments({ commit: 'main; run something', profileName: 'desktop' }, '.'), /无效/);
 });
+
+test('combined update reports a partial failure, offers retry at the same commit, and confirms bridge recovery', async t => {
+  const f = await fixture(t), memoryFile = path.join(f.dshHome, 'storages', 'codex-local-bridge', 'connection.json');
+  await fs.mkdir(path.dirname(memoryFile), { recursive: true }); await fs.writeFile(memoryFile, JSON.stringify({ root: path.join(f.home, 'bridge') }));
+  await f.updater.check(); const queued = await f.updater.start(); const jobFile = path.join(f.updater.directory, queued.jobId, 'job.json');
+  assert.equal(JSON.parse(await fs.readFile(jobFile)).bridgeRoot, path.join(f.home, 'bridge'));
+  const invoke = async () => { await fs.writeFile(path.join(f.profileDir, 'node_modules', PACKAGE, 'package.json'), JSON.stringify({ name: PACKAGE, version: '0.3.2' })); await fs.writeFile(path.join(f.profileDir, 'pnpm-lock.yaml'), lockText(latest)); return 0; };
+  await runUpdate(jobFile, { gitFinder: async () => 'git', invoke, bridgeUpdater: async () => { throw new Error('Previous source restored'); } });
+  let state = await f.updater.status(); assert.equal(state.status, 'error'); assert.equal(state.restartRequired, true); assert.equal(state.bridgePending, true); assert.match(state.message, /插件已安装/);
+  assert.equal((await f.updater.check()).available, true, 'bridge can retry when the plugin commit already matches');
+  const retry = await f.updater.start();
+  await runUpdate(path.join(f.updater.directory, retry.jobId, 'job.json'), { gitFinder: async () => 'git', invoke, bridgeUpdater: async options => { assert.equal(options.bridgeRoot, path.join(f.home, 'bridge')); return { updated: true, version: '1.1.1' }; } });
+  state = await f.updater.status(); assert.equal(state.status, 'success'); assert.equal(state.bridgeUpdated, true); assert.equal(state.bridgePending, false); assert.match(state.message, /1.1.1/);
+});

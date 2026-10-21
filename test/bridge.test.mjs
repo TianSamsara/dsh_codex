@@ -160,4 +160,6 @@ test('HTTP authenticates, streams tool calls, resumes, reports capabilities and 
   const stream = await (await fetch(base + '/v1/chat/completions', { method: 'POST', headers, body: JSON.stringify({ ...continued, stream: true }) })).text();
   assert.match(stream, /42/); assert.match(stream, /\[DONE\]/); assert.equal(manager.stats.sessionReuses, 1);
   await fetch(base + '/admin/drain', { method: 'POST', headers }); assert.equal((await fetch(base + '/v1/models', { headers })).status, 429);
+  assert.equal((await fetch(base + '/admin/resume', { method: 'POST' })).status, 401);
+  await fetch(base + '/admin/resume', { method: 'POST', headers }); assert.equal((await fetch(base + '/v1/models', { headers })).status, 200);
 });

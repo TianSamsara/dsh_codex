@@ -38,7 +38,11 @@ export default class CodexBridge extends TypertRemoteService {
       return () => { this.disposed = true; };
     });
   }
-  async status() { await Promise.all([this.ready, this.updateReady]); return { ...this.manager.status(), update: await this.updater.status() }; }
+  async status() {
+    await Promise.all([this.ready, this.updateReady]); const update = await this.updater.status();
+    if (update.bridgeUpdated && this.loadedUpdate !== update.jobId && !this.manager.busy) { await this.manager.load(); this.loadedUpdate = update.jobId; }
+    return { ...this.manager.status(), update };
+  }
   async discover() { await this.ready; return this.manager.discover(); }
   async connect(request) { await this.ready; return this.manager.connect(request); }
   async autoSetup() { await this.ready; return this.manager.autoSetup(); }

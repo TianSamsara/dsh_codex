@@ -5,6 +5,7 @@ import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { findGit } from './update-worker.mjs';
+import { runtimeNeedsUpdate } from './runtime-update.mjs';
 
 export const PACKAGE = 'dsh-plugin-codex-local-bridge';
 export const REPOSITORY = 'https://github.com/TianSamsara/dsh_codex';
@@ -103,8 +104,9 @@ export class RepositoryUpdater {
             }
           }
           const restarted = job.hostPid && job.hostPid !== process.pid;
-          if (job.status === 'success' && restarted) message = `插件已更新至 ${job.version || this.state.installedVersion}`;
-          Object.assign(this.state, { status, message, restartRequired: job.status === 'success' && !restarted, jobId: job.id });
+          if (job.status === 'success' && restarted) message = `插件已更新至 ${job.version || this.state.installedVersion}${job.bridgeUpdated ? `，本地桥接 ${job.bridgeVersion} 已更新，密钥和设置保留` : ''}`;
+          Object.assign(this.state, { status, message, bridgePending: job.bridgePending === true, bridgeUpdated: job.bridgeUpdated === true, bridgeVersion: job.bridgeVersion || '', restartRequired: (job.status === 'success' || job.pluginInstalled) && !restarted, jobId: job.id });
+          if (job.pluginInstalled) await this.refreshInstalled();
           if (job.status === 'success') { await this.refreshInstalled(); this.state.available = false; }
         }
       }
@@ -120,9 +122,11 @@ export class RepositoryUpdater {
     try {
       const latest = await readRepository(this.fetcher, this.headReader); await this.refreshInstalled();
       const order = compareVersions(latest.version, this.state.installedVersion);
-      const available = order > 0 || (order === 0 && Boolean(this.state.currentCommit) && latest.commit !== this.state.currentCommit);
+      let bridgePending = this.state.bridgePending === true;
+      try { bridgePending ||= await runtimeNeedsUpdate(this.dshHome, path.join(this.profileDir, 'node_modules', PACKAGE)); } catch { bridgePending = true; }
+      const available = order > 0 || (order === 0 && ((Boolean(this.state.currentCommit) && latest.commit !== this.state.currentCommit) || bridgePending));
       Object.assign(this.state, { status: 'checked', latestVersion: latest.version, latestCommit: latest.commit, available, checkedAt: Date.now(),
-        message: available ? '发现仓库更新，可点击“更新插件”安装此提交' : order < 0 ? '本机版本高于仓库版本，保留本机版本' : '当前已是仓库最新版本' });
+        bridgePending, message: available ? '可更新插件和本地桥接，密钥和设置保留' : order < 0 ? '本机版本高于仓库版本，保留本机版本' : '插件和已配置的本地桥接均为最新版本' });
       return structuredClone(this.state);
     } catch (error) { this.state.status = 'error'; this.state.available = false; this.state.message = safeMessage(error); throw new Error(this.state.message); }
     finally { this.busy = false; }
@@ -146,11 +150,12 @@ export class RepositoryUpdater {
       await fs.copyFile(new URL('./update-worker.mjs', import.meta.url), path.join(directory, 'worker.mjs'));
       await fs.copyFile(new URL('./install-cli.mjs', import.meta.url), path.join(directory, 'install-cli.mjs'));
       const config = { id, commit: this.state.latestCommit, version: this.state.latestVersion, dshHome: this.dshHome, profileDir: this.profileDir, profileName, exe, resources, hostPid: process.pid };
+      try { const memory = await readJSON(path.join(this.dshHome, 'storages', 'codex-local-bridge', 'connection.json')); if (memory.root) config.bridgeRoot = memory.root; } catch (error) { if (error.code !== 'ENOENT') throw new Error('连接记忆无法读取，请先重新连接桥接'); }
       await atomicJSON(path.join(directory, 'job.json'), config);
       await atomicJSON(path.join(directory, 'status.json'), { id, status: 'queued', message: '更新已排队，正在准备安装环境', updatedAt: Date.now() });
       await atomicJSON(path.join(this.directory, 'latest.json'), { id });
       const pid = await this.launch(exe, ['--expose-internals', path.join(directory, 'worker.mjs'), path.join(directory, 'job.json')], { cwd: directory, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, detached: true, windowsHide: true, stdio: 'ignore' });
-      this.state.status = 'queued'; this.state.message = '更新已在后台开始，桥接服务继续运行'; this.state.jobId = id;
+      this.state.status = 'queued'; this.state.message = '正在后台更新插件，随后更新本地桥接；密钥和设置保留'; this.state.jobId = id;
       await atomicJSON(path.join(directory, 'pid.json'), { pid });
       return structuredClone(this.state);
     } catch (error) {

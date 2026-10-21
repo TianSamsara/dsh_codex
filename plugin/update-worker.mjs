@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 const execute = promisify(execFile);
 const PACKAGE = 'dsh-plugin-codex-local-bridge';
 const safe = error => String(error?.message || error).replace(/Bearer\s+\S+|[a-f0-9]{48,}/gi, '[隐藏密钥]').slice(0, 260);
@@ -22,13 +22,14 @@ export function installArguments(config, directory) {
   if (!/^[a-f0-9]{40}$/.test(config.commit) || !/^[\w.-]{1,100}$/.test(config.profileName)) throw new Error('更新任务参数无效');
   return ['--expose-internals', path.join(directory, 'install-cli.mjs'), 'plugin', '--profile', config.profileName, 'add', `https://github.com/TianSamsara/dsh_codex#${config.commit}`];
 }
-export async function runUpdate(jobFile, { gitFinder = findGit, invoke } = {}) {
+export async function runUpdate(jobFile, { gitFinder = findGit, invoke, bridgeUpdater } = {}) {
   const config = JSON.parse(await fs.readFile(jobFile, 'utf8')), directory = path.dirname(jobFile);
   if (!/^[a-f0-9-]{36}$/.test(config.id) || path.basename(directory) !== config.id) throw new Error('更新任务标识无效');
   const statusFile = path.join(directory, 'status.json');
+  let pluginInstalled = false, bridgeUpdated = false, bridgeVersion = '';
   const report = async (status, message) => {
     const temporary = statusFile + '.' + process.pid + '.tmp';
-    await fs.writeFile(temporary, JSON.stringify({ id: config.id, status, message, pid: process.pid, hostPid: config.hostPid, version: config.version, updatedAt: Date.now() }), { mode: 0o600 }); await fs.rename(temporary, statusFile);
+    await fs.writeFile(temporary, JSON.stringify({ id: config.id, status, message, pid: process.pid, hostPid: config.hostPid, version: config.version, pluginInstalled, bridgeUpdated, bridgeVersion, bridgePending: pluginInstalled && Boolean(config.bridgeRoot) && !bridgeUpdated, updatedAt: Date.now() }), { mode: 0o600 }); await fs.rename(temporary, statusFile);
   };
   try {
     const args = installArguments(config, directory);
@@ -58,8 +59,16 @@ export async function runUpdate(jobFile, { gitFinder = findGit, invoke } = {}) {
     if (manifest.name !== PACKAGE || manifest.version !== config.version || !profile.dependencies?.[PACKAGE] || !profile.dsh?.profile?.bundles?.includes(PACKAGE)) throw new Error('安装结果尚未确认，请在插件管理中检查当前版本');
     const lock = await fs.readFile(path.join(config.profileDir, 'pnpm-lock.yaml'), 'utf8');
     if (!lock.includes(`https://codeload.github.com/TianSamsara/dsh_codex/tar.gz/${config.commit}`)) throw new Error('安装后的提交标识不匹配，请重新检查更新');
-    await report('success', `已安装 ${config.version}。请在当前任务结束后重启 Harness，载入新版插件`);
-  } catch (error) { await report('error', safe(error)); }
+    pluginInstalled = true;
+    if (config.bridgeRoot) {
+      const packageRoot = path.join(config.profileDir, 'node_modules', PACKAGE);
+      const update = bridgeUpdater || (await import(pathToFileURL(path.join(packageRoot, 'plugin', 'runtime-update.mjs')).href)).updateRuntime;
+      const result = await update({ dshHome: config.dshHome, bridgeRoot: config.bridgeRoot, packageRoot, report });
+      if (!result.updated) throw new Error('本地桥接更新结果未确认');
+      bridgeUpdated = true; bridgeVersion = result.version || '';
+    }
+    await report('success', `插件 ${config.version}${bridgeUpdated ? ` 和桥接 ${bridgeVersion}` : ''} 已更新，密钥和设置保留。请在当前任务结束后重启 Harness，载入新版插件`);
+  } catch (error) { await report('error', `${pluginInstalled ? '插件已安装；本地桥接更新未完成，可重新检查后重试。' : ''}${safe(error)}`); }
   finally {
     const lock = path.join(path.dirname(directory), 'update.lock');
     try { if ((await fs.readFile(lock, 'utf8')) === config.id) await fs.unlink(lock); } catch {}

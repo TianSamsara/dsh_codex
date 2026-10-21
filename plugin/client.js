@@ -81,11 +81,11 @@ window.__ModuleLoader__.load({
           h('p', { className: 'version' }, `当前运行：${update.currentVersion || '读取中'}${update.installedVersion && update.installedVersion !== update.currentVersion ? ` · 已安装：${update.installedVersion}` : ''}${update.latestVersion ? ` · 仓库：${update.latestVersion}` : ''}`),
           h('p', { className: 'muted' }, h('a', { href: 'https://github.com/TianSamsara/dsh_codex', target: '_blank', rel: 'noreferrer' }, 'TianSamsara/dsh_codex'), ' · main 分支'),
           h('div', { className: 'actions' }, h('button', { disabled: working, onClick: () => run('checkUpdate') }, update.status === 'checking' ? '正在检查…' : '检查仓库更新'),
-            h('button', { className: 'primary', disabled: working || !update.available, onClick: () => run('installUpdate') }, ['queued', 'installing'].includes(update.status) ? '正在更新…' : '更新插件')),
+            h('button', { className: 'primary', disabled: working || !update.available, onClick: () => run('installUpdate') }, ['queued', 'installing'].includes(update.status) ? '正在更新…' : '更新插件和桥接')),
           update.latestCommit && h('p', { className: 'muted' }, `仓库提交：${update.latestCommit.slice(0, 7)}`),
           update.message && h('p', { className: 'update-result', role: update.status === 'error' ? 'alert' : 'status', 'aria-live': 'polite' }, update.message),
           update.restartRequired && update.status !== 'success' && h('p', { className: 'update-result', role: 'status' }, '新版已安装，请在当前任务结束后重启 Harness。'),
-          h('p', { className: 'muted' }, '更新保留密钥、连接偏好和正在运行的桥接服务。完成后按提示重启 Harness。')),
+          h('p', { className: 'muted' }, '同时更新插件和本地桥接，保留密钥、端口、模型和思考强度。等待当前请求结束后短暂重启桥接；未结束则保留旧版供稍后重试。切换后首次调用会重新建立模型会话。完成后按提示重启 Harness。')),
         h('footer', { className: 'footer' }, h('p', { className: 'muted' }, '模型调用使用本机 Codex 的登录状态和可用额度。'), h('button', { className: 'quiet', disabled: working || !state.remembered, onClick: () => run('forget') }, '忘记此连接')));
     }
 
