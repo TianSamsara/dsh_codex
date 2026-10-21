@@ -1,6 +1,7 @@
 param(
     [string]$HarnessPath = (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\DeepSeek Harness.exe'),
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [string]$Source
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $HarnessPath -PathType Leaf)) { throw 'DeepSeek Harness was not found. Pass -HarnessPath with its installed executable.' }
@@ -21,7 +22,7 @@ $oldResources = $env:DSH_CODEX_INSTALL_RESOURCES
 try {
     $env:ELECTRON_RUN_AS_NODE = '1'
     $env:DSH_CODEX_INSTALL_RESOURCES = $harnessResources
-    $arguments = if ($Uninstall) { @('remove', 'dsh-plugin-codex-local-bridge') } else { @('add', $PSScriptRoot) }
+    $arguments = if ($Uninstall) { @('remove', 'dsh-plugin-codex-local-bridge') } else { @('add', $(if ($Source) { $Source } else { Split-Path -Parent $PSScriptRoot })) }
     $cliArguments = @('--expose-internals', (Join-Path $PSScriptRoot 'install-cli.mjs'), 'plugin', '--profile', 'desktop') + $arguments
     $quotedArguments = ($cliArguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
     $child = Start-Process -FilePath $HarnessPath -ArgumentList $quotedArguments -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput (Join-Path $backupDirectory 'install.stdout.log') -RedirectStandardError (Join-Path $backupDirectory 'install.stderr.log')

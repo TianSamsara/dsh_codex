@@ -1,6 +1,6 @@
 # Harness Codex 本地桥接
 
-桥接 **1.1.0** · Harness 面板插件 **0.2.0** · Windows / Node.js 20+。
+桥接 **1.1.0** · Harness 面板插件 **0.2.1** · Windows / Node.js 20+。
 
 让 DeepSeek Harness 使用本机 Codex 的 ChatGPT 登录，通过 `127.0.0.1:17654/v1` 提供文本、内嵌图片、流式输出与函数工具调用。插件可发现和记忆桥接、选择模型及思考强度、离线启动和自动重连。
 
@@ -14,6 +14,10 @@
 没有工具 ID 的纯文字聊天，只有调用方传入稳定的 `conversation_id` 或 `X-DSH-Session-ID` 才会续接；否则仍复用进程，保留每次请求独立建会话的行为。不要给不同聊天设置同一个固定会话 ID。
 
 ## 安装
+
+Harness 的“添加插件 → Git 仓库”可直接使用 `https://github.com/TianSamsara/dsh_codex`。仓库根目录已包含插件入口和元数据。Git 安装只安装面板；本地桥接仍需按下面步骤初始化或连接已存在的桥接。
+
+如果报 `ERR_PNPM_GIT_RESOLVE_FAILED` 并提示找不到 `git`，需要让启动 Harness 的环境能执行 Git；这是下载前置条件。安装 Git for Windows 或把已有 Git 的 `cmd` 目录加入用户 PATH，之后重新启动 Harness。也可先克隆仓库，再使用下面的本地安装脚本，避免当前窗口的旧 PATH 影响。
 
 先在本机 Codex 完成 ChatGPT 登录，安装 Node.js，再在仓库目录打开 PowerShell：
 
