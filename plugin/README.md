@@ -44,6 +44,6 @@ node --test test/*.test.mjs
 
 测试覆盖发现边界、记忆恢复、离线启动、脚本变更保护、模型/档位校验、错误与密钥隐藏，以及客户端入口与动作绑定。自动连接仅获取模型目录，不运行模型推理或消耗测试题额度。
 
-本机验证：安装器成功注册插件，读取 7 个模型；原版面板“连接并记住”和思考强度菜单已验证。本仓库桥接与插件共 21 项自动测试通过，真实 HTTP 已验证进程和原生工具会话续接。
+本机验证：安装器成功注册插件，读取 7 个模型；原版面板“连接并记住”和思考强度菜单已验证。本仓库桥接与插件共 22 项自动测试通过，真实 HTTP 已验证进程和原生工具会话续接；0.2.1 已通过 GitHub 仓库来源实际安装验证。
 
 实现使用 Harness 的 Cordis Service、公开 Remote 装饰器、客户端 Remote 挂载和 UI Slots，不修改安装目录或 `app.asar`。参考：[官方插件入门](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.md)、[客户端模块](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md)、[插件配置面板](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-plugin-manager/README.md)。
