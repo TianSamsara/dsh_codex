@@ -8,6 +8,8 @@ test('the Git repository root resolves as an installable Harness plugin', async 
   const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
   const require = createRequire(new URL('package.json', root));
   assert.equal(manifest.name, 'dsh-plugin-codex-local-bridge');
+  const nested = JSON.parse(await readFile(new URL('plugin/package.json', root), 'utf8'));
+  assert.equal(manifest.version, nested.version);
   assert.notEqual(manifest.private, true);
   for (const entry of ['', '/client', '/package.json', '/cordis.patch.yml', '/locale/en.json', '/locale/zh.json']) await access(require.resolve(manifest.name + entry));
   await access(new URL(manifest.dsh.bundle.patch, root));

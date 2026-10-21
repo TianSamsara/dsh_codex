@@ -8,23 +8,24 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { SOURCE_FILES } from '../plugin/runtime-update.mjs';
+import { VERSION } from '../bridge/protocol.mjs';
 
 const execute = promisify(execFile), repo = fileURLToPath(new URL('../', import.meta.url));
 const ps = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const native = { skip: process.platform !== 'win32', timeout: 90000 };
-async function fixture(t, { busy = false, invalid = false, electron = false } = {}) {
+async function fixture(t, { busy = false, invalid = false, electron = false, webSearch } = {}) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-native-update-'));
   const root = path.join(temp, 'runtime with spaces'), bundle = path.join(temp, 'bundle'), bridge = path.join(bundle, 'bridge');
   await fs.mkdir(path.join(root, 'state'), { recursive: true }); await fs.mkdir(bridge, { recursive: true });
   const listener = net.createServer(); await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve)); const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
   for (const name of SOURCE_FILES) { await fs.copyFile(path.join(repo, 'bridge', name), path.join(root, name)); await fs.copyFile(path.join(repo, 'bridge', name), path.join(bridge, name)); }
   await fs.copyFile(path.join(repo, 'Update-Bridge.ps1'), path.join(bundle, 'Update-Bridge.ps1'));
-  await fs.writeFile(path.join(root, 'protocol.mjs'), (await fs.readFile(path.join(root, 'protocol.mjs'), 'utf8')).replace("VERSION = '1.1.1'", "VERSION = '1.1.0'"));
+  await fs.writeFile(path.join(root, 'protocol.mjs'), (await fs.readFile(path.join(root, 'protocol.mjs'), 'utf8')).replace(`VERSION = '${VERSION}'`, "VERSION = '1.1.0'"));
   if (busy) await fs.writeFile(path.join(root, 'server.mjs'), (await fs.readFile(path.join(root, 'server.mjs'), 'utf8')).replace('let active = 0', 'let active = 1'));
   if (invalid) await fs.writeFile(path.join(bridge, 'server.mjs'), invalid === 'hang' ? 'setInterval(() => {}, 1000);' : 'throw new Error("intentional startup failure");');
   const node = electron ? path.join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe') : process.execPath;
-  const settings = JSON.stringify({ port, node, electronNode: electron, codex: 'unused-codex.exe', customSetting: 'preserved' }) + '\n', key = 'c'.repeat(64) + '\n';
+  const settings = JSON.stringify({ port, node, electronNode: electron, codex: 'unused-codex.exe', customSetting: 'preserved', ...(webSearch === undefined ? {} : { webSearch }) }) + '\n', key = 'c'.repeat(64) + '\n';
   await fs.writeFile(path.join(root, 'settings.json'), settings); await fs.writeFile(path.join(root, 'state', 'local-key'), key);
   const headers = { Authorization: `Bearer ${key.trim()}` }, url = `http://127.0.0.1:${port}/health`;
   const health = async () => (await fetch(url, { headers, signal: AbortSignal.timeout(1000) })).json();
@@ -50,8 +51,17 @@ async function fixture(t, { busy = false, invalid = false, electron = false } = 
 }
 test('Windows replaces a running bridge and preserves key/configuration with an Electron runtime', native, async t => {
   const f = await fixture(t, { electron: true }); const result = JSON.parse((await f.run()).stdout.trim());
-  assert.equal(result.version, '1.1.1'); assert.equal((await f.health()).version, '1.1.1'); await f.preserved();
+  assert.equal(result.version, VERSION); assert.equal((await f.health()).version, VERSION); await f.preserved();
+  assert.equal((await f.health()).web_search_mode, 'live');
   assert.equal((await fs.readFile(path.join(result.backup, 'protocol.mjs'), 'utf8')).includes("VERSION = '1.1.0'"), true);
+});
+
+test('Windows bridge updates preserve an explicitly disabled hosted search setting', native, async t => {
+  const f = await fixture(t, { webSearch: 'disabled' }); await f.run();
+  const health = await f.health();
+  assert.equal(health.web_search_mode, 'disabled');
+  assert.equal(health.capabilities.native_web_search, false);
+  await f.preserved();
 });
 test('Windows busy timeout keeps old source accepting requests without draining', native, async t => {
   const f = await fixture(t, { busy: true }); const before = await fs.readFile(path.join(f.root, 'server.mjs'));

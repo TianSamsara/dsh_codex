@@ -20,7 +20,7 @@ test('first setup creates a complete private bridge, a unique key and an availab
   for (const file of RUNTIME_FILES) await fs.access(path.join(result.root, file));
   const settings = JSON.parse(await fs.readFile(path.join(result.root, 'settings.json'), 'utf8'));
   const key = await fs.readFile(path.join(result.root, 'state', 'local-key'), 'utf8');
-  assert.equal(settings.port, 17656); assert.equal(settings.electronNode, true); assert.match(key, /^[a-f0-9]{64}$/);
+  assert.equal(settings.port, 17656); assert.equal(settings.electronNode, true); assert.equal(settings.webSearch, 'live'); assert.match(key, /^[a-f0-9]{64}$/);
   assert.equal(JSON.stringify(result).includes(key), false); assert.ok(progress.length >= 3);
   assert.equal((await inspectRoot(result.root)).key, key);
   const secondHome = path.join(f.home, 'second');

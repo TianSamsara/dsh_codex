@@ -51,6 +51,19 @@ test('connection remembers only file references and preferences, then restores t
   await f.manager.forget(); assert.equal((await f.manager.load()).remembered, false);
   await assert.rejects(fs.stat(f.manager.file), { code: 'ENOENT' });
 });
+
+test('connection exposes hosted search availability and mode without exposing credentials', async t => {
+  const f = await fixture(t);
+  for (const mode of ['live', 'cached', 'disabled']) {
+    f.manager.fetcher = async url => new Response(JSON.stringify(url.pathname === '/health'
+      ? { service: 'dsh-codex-bridge', version: '1.1.4', capabilities: { native_web_search: mode !== 'disabled' }, web_search_mode: mode }
+      : { data: rows }));
+    const state = await f.manager.connect({ root: f.root });
+    assert.equal(state.nativeWebSearch, mode !== 'disabled');
+    assert.equal(state.webSearchMode, mode);
+    assert.equal(JSON.stringify(state).includes(key), false);
+  }
+});
 test('offline bridges launch only when requested and remembered fingerprints still match', async t => {
   const f = await fixture(t); f.online = false;
   await assert.rejects(f.manager.connect({ root: f.root, autoStart: false }), /未运行/);

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-export const VERSION = '1.1.1';
+export const VERSION = '1.1.4';
 export const stable = value => JSON.stringify(sort(value));
 function sort(value) {
   if (Array.isArray(value)) return value.map(sort);
@@ -65,6 +65,7 @@ export function toolOutput(content) {
   return typeof content === 'string' ? [{ type: 'inputText', text: content }] : content.map(part => part.type === 'text' ? { type: 'inputText', text: part.text } : { type: 'inputImage', imageUrl: part.image_url.url });
 }
 const INSTRUCTIONS = 'You are the model backend for DeepSeek Harness. Follow its application instructions below. JSON input is conversation history with role labels; continue from the last message. Use only provided dynamic tools, executed by Harness under Harness permissions. Codex read-only sandbox describes this private backend, not the Harness project. Use the actual project directory from Harness context or tool results. Do not execute local Codex tools, read local files, or inspect the local machine. Do not repeat completed tool calls. Tool names dsh_tool_N map to Harness names in their descriptions. Return assistant text when no tool is needed.\n\n';
+const WEB_INSTRUCTIONS = 'Hosted web search is enabled for this bridge. For public internet research, prefer the built-in Codex hosted web search and page-opening capability. It uses the existing Codex login; a missing DEEPSEEK_API_KEY affects Harness search only. Continue to execute all project file, shell and other local actions through Harness dynamic tools and its permissions. Do not change network security settings, access private network addresses, or send secrets and private file contents to search. Report each unavailable source accurately and try another available public source when appropriate. Cite verified public URLs as ordinary Markdown links so Harness can display them; do not output internal citation markers.\n\n';
 
 // A live native turn remains paused across HTTP responses until Harness supplies its tool results.
 export class Session {
@@ -73,6 +74,7 @@ export class Session {
     this.id = randomUUID(); this.pending = new Map(); this.allCalls = new Set(); this.messages = new Map(); this.lastUsed = Date.now();
     this.onTool = message => {
       const p = message.params; if (p.threadId !== this.threadId) return;
+      this.activeTurnId = p.turnId;
       const index = request.tools.findIndex(tool => tool.name === p.tool);
       if (index < 0) { this.fail(new Error('Unknown native tool')); return; }
       const id = `dsh_${randomUUID().replaceAll('-', '')}`;
@@ -82,6 +84,7 @@ export class Session {
     };
     this.onEvent = ({ method, params: p }) => {
       if (p?.threadId !== this.threadId) return;
+      if (method === 'turn/started') this.activeTurnId = p.turn.id;
       if (method === 'item/agentMessage/delta') { this.messages.set(p.itemId, (this.messages.get(p.itemId) || '') + p.delta); this.waiter?.emit?.({ content: p.delta }); }
       if (method === 'item/completed' && p.item?.type === 'agentMessage') this.messages.set(p.item.id, p.item.text);
       if (method === 'thread/tokenUsage/updated') {
@@ -97,7 +100,9 @@ export class Session {
   }
   async startThread(config) {
     const disabled = Object.fromEntries(Object.keys(config.mcp_servers || {}).map(name => [name, { enabled: false }]));
-    const result = await this.client.rpc('thread/start', { model: this.request.model, modelProvider: 'openai', cwd: this.cwd, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.apps': false, 'features.multi_agent': false, web_search: 'disabled', mcp_servers: disabled }, baseInstructions: INSTRUCTIONS + this.request.system, dynamicTools: this.request.tools });
+    const webSearch = this.request.webSearch || 'disabled';
+    const instructions = webSearch === 'disabled' ? INSTRUCTIONS : INSTRUCTIONS.replace('Use only provided dynamic tools, executed by Harness under Harness permissions.', 'Use provided Harness dynamic tools for local work under Harness permissions, and the built-in hosted web search for public internet research.');
+    const result = await this.client.rpc('thread/start', { model: this.request.model, modelProvider: 'openai', cwd: this.cwd, ephemeral: true, sandbox: 'read-only', approvalPolicy: 'never', config: { 'features.shell_tool': false, 'features.apps': false, 'features.multi_agent': false, web_search: webSearch, mcp_servers: disabled }, baseInstructions: instructions + (webSearch === 'disabled' ? '' : WEB_INSTRUCTIONS) + this.request.system, dynamicTools: this.request.tools });
     this.threadId = result.thread.id;
   }
   matches(request) {
@@ -108,11 +113,15 @@ export class Session {
     if (this.error) throw this.error;
     const tail = continuing ? request.history.slice(this.expectedCount) : request.history;
     const awaiting = [...this.pending.values()].filter(p => p.sent);
-    let results;
+    let results, supplements = [];
     if (awaiting.length) {
-      // Exact ownership/count prevents wrong-session output and accidentally acknowledging a tool twice.
-      if (tail.length !== awaiting.length || tail.some(m => m.role !== 'tool') || new Set(tail.map(m => m.tool_call_id)).size !== tail.length || awaiting.some(p => !tail.some(m => m.tool_call_id === p.call.id))) throw new Error('Tool results do not match pending calls');
-      results = awaiting.map(p => ({ pending: p, output: toolOutput(tail.find(m => m.tool_call_id === p.call.id).content) }));
+      // Harness adds user messages for job notices, steering, and images split out
+      // of tool outputs. Validate tool ownership independently from those inputs.
+      const replies = tail.filter(m => m.role === 'tool');
+      supplements = tail.filter(m => m.role !== 'tool');
+      if (replies.length !== awaiting.length || supplements.some(m => m.role !== 'user') || new Set(replies.map(m => m.tool_call_id)).size !== replies.length || awaiting.some(p => !replies.some(m => m.tool_call_id === p.call.id))) throw new Error('Tool results do not match pending calls');
+      if (supplements.length && !this.activeTurnId) throw new Error('Missing active turn for supplemental input');
+      results = awaiting.map(p => ({ pending: p, output: toolOutput(replies.find(m => m.tool_call_id === p.call.id).content) }));
     } else if (continuing && !this.completed) throw new Error('Conversation is still running');
     const previousUsage = this.reportedUsage || {};
     this.completed = false; this.messages.clear();
@@ -120,12 +129,23 @@ export class Session {
       const abort = () => this.fail(new Error('Request cancelled'));
       this.waiter = { resolve, reject, emit, signal, abort }; signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) { abort(); return; }
-      if (results) {
-        for (const { pending, output } of results) { this.pending.delete(pending.call.id); this.client.write({ id: pending.rpcId, result: { contentItems: output, success: true } }); }
-        this.flushSoon();
-      } else {
-        this.client.rpc('turn/start', { threadId: this.threadId, model: request.model, ...(request.effort ? { effort: request.effort } : {}), input: historyInput(tail) }).catch(error => this.fail(error));
-      }
+      const advance = async () => {
+        if (results) {
+          // Queue the extra input while native tools are still paused. Do not
+          // acknowledge anything if steering fails, and never replay a tool call.
+          if (supplements.length) await this.client.rpc('turn/steer', {
+            threadId: this.threadId, expectedTurnId: this.activeTurnId,
+            input: historyInput(supplements),
+          });
+          if (this.error || signal?.aborted || this.client.dead) throw this.error || new Error('Request cancelled');
+          for (const { pending, output } of results) { this.pending.delete(pending.call.id); this.client.write({ id: pending.rpcId, result: { contentItems: output, success: true } }); }
+          this.flushSoon();
+        } else {
+          const started = await this.client.rpc('turn/start', { threadId: this.threadId, model: request.model, ...(request.effort ? { effort: request.effort } : {}), input: historyInput(tail) });
+          this.activeTurnId = started.turn.id;
+        }
+      };
+      advance().catch(error => this.fail(error));
     });
     const u = this.totalUsage || {}, delta = key => Math.max(0, (u[key] || 0) - (previousUsage[key] || 0));
     if (this.totalUsage) { result.usage = { prompt_tokens: delta('inputTokens'), completion_tokens: delta('outputTokens'), total_tokens: delta('totalTokens'), prompt_tokens_details: { cached_tokens: delta('cachedInputTokens') } }; this.reportedUsage = { ...u }; }

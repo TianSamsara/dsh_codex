@@ -10,7 +10,7 @@ const EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'ma
 const safeError = error => String(error?.message || error).replace(/Bearer\s+\S+|[a-f0-9]{48,}/gi, '[隐藏密钥]').slice(0, 240);
 const readJSON = async file => JSON.parse((await fs.readFile(file, 'utf8')).replace(/^\uFEFF/, ''));
 const exists = async file => { try { return (await fs.stat(file)).isFile(); } catch { return false; } };
-const bridgeFeatures = health => ({ bridgeVersion: /^\d+\.\d+\.\d+$/.test(health?.version || '') ? health.version : '', warmProcess: health?.capabilities?.warm_process === true, sessionContinuation: health?.capabilities?.session_continuation === true });
+const bridgeFeatures = health => ({ bridgeVersion: /^\d+\.\d+\.\d+$/.test(health?.version || '') ? health.version : '', warmProcess: health?.capabilities?.warm_process === true, sessionContinuation: health?.capabilities?.session_continuation === true, nativeWebSearch: health?.capabilities?.native_web_search === true, webSearchMode: ['disabled', 'cached', 'live'].includes(health?.web_search_mode) ? health.web_search_mode : '' });
 
 export function localBaseURL(value) {
   const url = new URL(value);

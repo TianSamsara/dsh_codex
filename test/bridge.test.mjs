@@ -23,6 +23,12 @@ class FakeClient extends EventEmitter {
     this.rpcs.push({ method, params });
     if (method === 'thread/start') { const id = `thread-${++this.seq}`; this.threads.set(id, params); return { thread: { id } }; }
     if (method === 'thread/unsubscribe') { this.threads.delete(params.threadId); return {}; }
+    if (method === 'turn/steer') {
+      assert.equal(params.expectedTurnId, 'turn');
+      assert.equal(this.writes.length, 0, 'supplements must be accepted before acknowledging tools');
+      if (this.rejectSteering) throw new Error('Steering rejected');
+      return { turnId: 'turn' };
+    }
     if (method === 'turn/start') {
       queueMicrotask(() => {
         if (this.dead || this.hold) return;
@@ -72,6 +78,56 @@ test('parallel tool outputs retain RPC ownership even when results arrive in rev
   assert.notEqual(lease.entry.client.writes[0].id, lease.entry.client.writes[1].id);
 });
 
+test('background job notices accompany results without replaying a tool or starting a new turn', async t => {
+  const m = fixture(t), body = initial(), first = await m.answer(body);
+  const next = continuation(body, first, 'file written');
+  next.messages.push({ role: 'user', content: '<job-notice>Preview finished</job-notice>' });
+  const second = await m.answer(next), client = [...m.clients][0].client;
+  assert.equal(second.finish_reason, 'stop');
+  assert.equal(second.bridge_timing.session_reused, true);
+  assert.equal(client.rpcs.filter(r => r.method === 'turn/start').length, 1);
+  assert.equal(client.writes.length, 1);
+  const steer = client.rpcs.find(r => r.method === 'turn/steer');
+  assert.deepEqual(JSON.parse(steer.params.input[0].text), [next.messages.at(-1)]);
+});
+
+test('Harness image follow-ups retain pixels during native tool continuation', async t => {
+  const m = fixture(t), body = initial(), first = await m.answer(body);
+  const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,YQ==' } };
+  const next = continuation(body, first, 'image loaded');
+  next.messages.push({ role: 'user', content: [{ type: 'text', text: 'Attached image(s) from tool result:' }, image] });
+  const second = await m.answer(next), client = [...m.clients][0].client;
+  assert.equal(second.bridge_timing.session_reused, true);
+  const steer = client.rpcs.find(r => r.method === 'turn/steer');
+  assert.deepEqual(steer.params.input[1], { type: 'image', url: image.image_url.url });
+  assert.match(steer.params.input[0].text, /Attached image/);
+  assert.equal(client.writes.length, 1);
+});
+
+test('parallel tool replies may be interleaved with user supplements and preserve RPC ids', async t => {
+  const m = fixture(t); const lease = m.lease(); await lease.entry.ready;
+  lease.entry.client.parallel = true; m.release(lease.entry, true);
+  const body = initial(), first = await m.answer(body), next = continuation(body, first);
+  const [one, two] = next.messages.slice(2);
+  next.messages = [...next.messages.slice(0, 2), two, { role: 'user', content: 'Also check layout.' }, one];
+  const second = await m.answer(next), client = lease.entry.client;
+  assert.equal(second.finish_reason, 'stop');
+  assert.equal(client.writes.length, 2);
+  assert.equal(new Set(client.writes.map(w => w.id)).size, 2);
+  assert.equal(client.rpcs.filter(r => r.method === 'turn/steer').length, 1);
+});
+
+test('rejected steering never acknowledges pending tools or retries the model', async t => {
+  const m = fixture(t), body = initial(), first = await m.answer(body);
+  const client = [...m.clients][0].client; client.rejectSteering = true;
+  const next = continuation(body, first);
+  next.messages.push({ role: 'user', content: 'New context' });
+  await assert.rejects(m.answer(next), /Steering rejected/);
+  assert.equal(client.writes.length, 0);
+  assert.equal(client.rpcs.filter(r => r.method === 'turn/start').length, 1);
+  assert.equal(m.sessions.size, 0);
+});
+
 test('identical new chats share a process but never a native thread', async t => {
   const m = fixture(t); const first = await m.answer(initial()), second = await m.answer(initial());
   assert.notEqual(first.tool_calls[0].id, second.tool_calls[0].id);
@@ -99,12 +155,59 @@ test('missing or duplicate tool outputs are rejected without acknowledging nativ
   await assert.rejects(m.answer(next), /do not match/); assert.equal(client.writes.length, 0); assert.equal(m.sessions.size, 0);
 });
 
+test('supplemental user input does not weaken missing, duplicate or foreign tool-id checks', async t => {
+  for (const invalid of ['missing', 'duplicate', 'foreign', 'assistant']) {
+    const m = fixture(t), body = initial(), first = await m.answer(body), next = continuation(body, first);
+    const client = [...m.clients][0].client;
+    if (invalid === 'missing') next.messages.pop();
+    if (invalid === 'duplicate') next.messages.push({ ...next.messages.at(-1) });
+    if (invalid === 'foreign') next.messages.at(-1).tool_call_id = 'dsh_foreign';
+    next.messages.push({ role: invalid === 'assistant' ? 'assistant' : 'user', content: 'Supplement' });
+    await assert.rejects(m.answer(next), /do not match/, invalid);
+    assert.equal(client.writes.length, 0, invalid);
+    assert.equal(client.rpcs.some(r => r.method === 'turn/steer'), false, invalid);
+  }
+});
+
 test('text-only continuation requires an explicit id, and prefix edits still invalidate it', async t => {
   const m = fixture(t), body = { ...initial(), tools: [], conversation_id: 'one' };
   const first = await m.answer(body);
   const second = await m.answer({ ...body, messages: [...body.messages, assistant(first), { role: 'user', content: 'Continue' }] });
   assert.equal(second.bridge_timing.session_reused, true);
   assert.equal(m.stats.sessionsStarted, 1);
+});
+
+test('hosted search modes never enable local native tools or MCPs', async t => {
+  for (const webSearch of ['disabled', 'live', 'cached']) {
+    const m = fixture(t, { webSearch }); await m.answer(initial());
+    const client = [...m.clients][0].client;
+    const thread = client.rpcs.find(r => r.method === 'thread/start').params;
+    assert.equal(thread.config.web_search, webSearch);
+    assert.equal(thread.sandbox, 'read-only');
+    assert.equal(thread.config['features.shell_tool'], false);
+    assert.equal(thread.config['features.apps'], false);
+    assert.equal(thread.config['features.multi_agent'], false);
+    if (webSearch !== 'disabled') assert.match(thread.baseInstructions, /ordinary Markdown links/);
+  }
+  assert.throws(() => fixture(t, { webSearch: 'unrestricted' }), /Invalid hosted web search mode/);
+});
+
+test('new and upgraded bridges use live search by default while explicit opt-out is respected', async t => {
+  for (const [options, expected] of [[{}, 'live'], [{ webSearch: 'disabled' }, 'disabled']]) {
+    const m = fixture(t, options); await m.answer(initial());
+    const thread = [...m.clients][0].client.rpcs.find(r => r.method === 'thread/start').params;
+    assert.equal(thread.config.web_search, expected);
+  }
+});
+
+test('tool_choice none disables hosted search and search mode changes retire the old session', async t => {
+  const m = fixture(t, { webSearch: 'live' });
+  const body = { ...initial(), tool_choice: 'none', conversation_id: 'search-policy' };
+  const first = await m.answer(body), client = [...m.clients][0].client;
+  assert.equal(client.rpcs.find(r => r.method === 'thread/start').params.config.web_search, 'disabled');
+  const second = await m.answer({ ...body, tool_choice: 'auto', messages: [...body.messages, assistant(first), { role: 'user', content: 'Search now' }] });
+  assert.equal(second.bridge_timing.session_reused, false);
+  assert.equal(client.rpcs.filter(r => r.method === 'thread/start').at(-1).params.config.web_search, 'live');
 });
 
 test('cancellation retires the process and every attached session; next request recovers', async t => {

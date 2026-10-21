@@ -1,8 +1,12 @@
 # Codex 本地桥接：DeepSeek Harness 插件
 
-版本 **0.3.2**，2026-10-21。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。面板可自动创建并启动桥接，检查 GitHub 仓库并联合更新插件与本地桥接。
+版本 **0.3.3**，2026-10-22，随包桥接 **1.1.4**。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。面板可自动创建并启动桥接，检查 GitHub 仓库并联合更新插件与本地桥接。
 
 在侧边栏增加 **Codex 桥接**，在 **插件 → 已安装插件 → Codex 本地桥接** 中提供相同的配置面板。按钮包括自动发现、连接并记住、启动并连接和忘记此连接；支持模型、思考强度、启动时自动连接、桥接离线时自动启动，以及设为新会话默认模型。
+
+本版修复工具结果附带图片、后台通知或用户补充时的 `Tool results do not match pending calls`。默认启用 Codex 原生实时联网搜索，并显示实时／缓存／未启用状态；使用现有 Codex 登录，无需 DeepSeek 搜索密钥。公开源码、原理与故障排查见仓库根目录 [README](../README.md) 和 [故障排查](../TROUBLESHOOTING.md)。
+
+安装后在面板点击“更新插件和桥接”即可将修复装入已记住的运行目录。老配置未写 `webSearch` 时默认实时检索；已明确设置 `disabled` 或 `cached` 的选择继续保留。在运行目录的 `settings.json` 设置 `webSearch` 并重启桥接可调整模式。文件和命令权限仍由 Harness 提供。
 
 ## 安装
 
@@ -52,6 +56,6 @@ node --test test/*.test.mjs
 
 测试覆盖发现边界、记忆恢复、离线启动、脚本变更保护、模型/档位校验、错误与密钥隐藏，以及客户端入口与动作绑定。自动连接仅获取模型目录，不运行模型推理或消耗测试题额度。
 
-本机验证：46 项测试通过，包含 Windows Electron 桥接实际切换、忙碌超时、启动失败恢复和配置保留；真实仓库检查已验证 API 限流回退；真实空目录初始化可获取 7 个模型；真实 HTTP 已验证进程与工具会话续接。
+本机验证：仓库全套 56 项测试通过，包含工具结果混合图片／通知、原生搜索默认值与明确关闭、面板联网状态、Windows Electron 桥接切换、忙碌超时、启动失败恢复和配置保留；真实模型和本机 HTTP 已验证工具续接以及无需 DeepSeek 凭据的 GitHub 联网检索。
 
 实现使用 Harness 的 Cordis Service、公开 Remote 装饰器、客户端 Remote 挂载和 UI Slots，不修改安装目录或 `app.asar`。参考：[官方插件入门](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.md)、[客户端模块](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md)、[插件配置面板](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-plugin-manager/README.md)。

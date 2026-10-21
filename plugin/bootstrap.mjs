@@ -79,7 +79,7 @@ export async function prepareRuntime({ dshHome, bundleRoot = fileURLToPath(new U
   try {
     await fs.mkdir(path.join(stage, 'state'), { recursive: true, mode: 0o700 });
     await Promise.all(RUNTIME_FILES.map((file, index) => fs.writeFile(path.join(stage, file), sources[index], { mode: 0o600 })));
-    await fs.writeFile(path.join(stage, 'settings.json'), JSON.stringify({ port, ...executables }, null, 2), { mode: 0o600 });
+    await fs.writeFile(path.join(stage, 'settings.json'), JSON.stringify({ port, ...executables, webSearch: 'live' }, null, 2), { mode: 0o600 });
     await fs.writeFile(path.join(stage, 'state', 'local-key'), randomBytes(32).toString('hex'), { mode: 0o600 });
     await fs.writeFile(path.join(stage, 'installation.json'), JSON.stringify({ owner: 'dsh-plugin-codex-local-bridge', format: 1, createdAt: new Date().toISOString() }), { mode: 0o600 });
     // A previously empty target can be removed without recursive deletion.

@@ -2,7 +2,7 @@ param([string]$CodexPath, [int]$Port = 17654, [switch]$InstallPlugin)
 $ErrorActionPreference = 'Stop'
 $bridgeDirectory = Join-Path $PSScriptRoot 'bridge'
 $settingsFile = Join-Path $bridgeDirectory 'settings.json'
-$settings = if (Test-Path -LiteralPath $settingsFile) { Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json } else { [pscustomobject]@{ port=$Port; node=''; codex='' } }
+$settings = if (Test-Path -LiteralPath $settingsFile) { Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json } else { [pscustomobject]@{ port=$Port; node=''; codex=''; webSearch='live' } }
 if ($Port -lt 1024 -or $Port -gt 65535) { throw 'Invalid port.' }
 $settings.node = (Get-Command node -ErrorAction Stop).Source
 if ($CodexPath) { $settings.codex = (Resolve-Path -LiteralPath $CodexPath).Path }

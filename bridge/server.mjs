@@ -15,7 +15,7 @@ export function createBridge({ key, port = 17654, manager, timeoutMs = 600000, l
     const actual = Buffer.from(req.headers.authorization || ''), expected = Buffer.from(`Bearer ${key}`);
     if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return json(401, { error: { message: 'Invalid local bridge key' } });
     const draining = Date.now() < drainUntil;
-    if (req.method === 'GET' && req.url === '/health') return json(200, { service: 'dsh-codex-bridge', auth: 'ChatGPT subscription', version: VERSION, active, draining, capabilities: { warm_process: true, metadata_cache: true, session_continuation: true }, pool: manager.health() });
+    if (req.method === 'GET' && req.url === '/health') return json(200, { service: 'dsh-codex-bridge', auth: 'ChatGPT subscription', version: VERSION, active, draining, capabilities: { warm_process: true, metadata_cache: true, session_continuation: true, native_web_search: manager.webSearch !== 'disabled' }, web_search_mode: manager.webSearch, pool: manager.health() });
     // An authenticated drain blocks new work while existing HTTP operations finish.
     if (req.method === 'POST' && req.url === '/admin/drain') { drainUntil = Date.now() + 90000; return json(200, { draining: true, active }); }
     if (req.method === 'POST' && req.url === '/admin/resume') { drainUntil = 0; return json(200, { draining: false, active }); }
@@ -70,7 +70,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const key = readFileSync(keyFile, 'utf8').trim(); if (!/^[a-f0-9]{64}$/i.test(key)) throw new Error('Invalid key file');
   const settings = JSON.parse(readFileSync(path.join(root, 'settings.json'), 'utf8').replace(/^\uFEFF/, ''));
   if (!Number.isInteger(settings.port) || settings.port < 1024 || settings.port > 65535) throw new Error('Invalid port');
-  const manager = new BridgeManager({ codex: settings.codex, state });
+  const manager = new BridgeManager({ codex: settings.codex, state, webSearch: settings.webSearch ?? 'live' });
   const server = createBridge({ key, port: settings.port, manager });
   server.listen(settings.port, '127.0.0.1', () => console.log(`Harness Codex bridge ${VERSION}: http://127.0.0.1:${settings.port}/v1`));
   const shutdown = () => { server.close(); server.closeIdleConnections(); setTimeout(() => { manager.close(); process.exit(0); }, 3000).unref(); };

@@ -1,11 +1,11 @@
 {
   "name": "dsh-plugin-codex-local-bridge",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Codex 本地桥接与 Harness 模型连接面板",
   "type": "module",
   "main": "./plugin/index.mjs",
   "exports": { ".": "./plugin/index.mjs", "./client": "./plugin/client.js", "./package.json": "./package.json", "./cordis.patch.yml": "./plugin/cordis.patch.yml", "./locale/*.json": "./plugin/locale/*.json" },
-  "files": ["plugin", "bridge/*.mjs", "bridge/Start-Bridge.ps1", "Setup-Bridge.ps1", "Update-Bridge.ps1", "README.md", "CHANGELOG.md"],
+  "files": ["plugin", "bridge/*.mjs", "bridge/Start-Bridge.ps1", "Setup-Bridge.ps1", "Update-Bridge.ps1", "README.md", "CHANGELOG.md", "TROUBLESHOOTING.md"],
   "icon": "./plugin/icon.svg",
   "dsh": {
     "bundle": { "patch": "./plugin/cordis.patch.yml" },

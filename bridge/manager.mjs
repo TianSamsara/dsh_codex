@@ -3,8 +3,9 @@ import { Session, normalize, hash } from './protocol.mjs';
 
 export class BusyError extends Error { constructor(message = 'Bridge busy; retry shortly') { super(message); this.status = 429; } }
 export class BridgeManager {
-  constructor({ codex, state, Client = CodexClient, limit = 3, idleMs = 90000, sessionMs = 1800000, maxSessions = 24, batchMs = 40 } = {}) {
-    Object.assign(this, { codex, state, Client, limit, idleMs, sessionMs, maxSessions, batchMs });
+  constructor({ codex, state, Client = CodexClient, limit = 3, idleMs = 90000, sessionMs = 1800000, maxSessions = 24, batchMs = 40, webSearch = 'live' } = {}) {
+    if (!['disabled', 'cached', 'live'].includes(webSearch)) throw new Error('Invalid hosted web search mode');
+    Object.assign(this, { codex, state, Client, limit, idleMs, sessionMs, maxSessions, batchMs, webSearch });
     this.clients = new Set(); this.sessions = new Set(); this.calls = new Map(); this.explicit = new Map(); this.active = 0;
     this.stats = { processes: 0, processReuses: 0, sessionsStarted: 0, sessionReuses: 0 };
     this.timer = setInterval(() => { void this.sweep(); }, 15000); this.timer.unref?.();
@@ -58,6 +59,7 @@ export class BridgeManager {
   }
   async answer(body, emit, signal) {
     const started = Date.now(), request = normalize(body);
+    request.webSearch = body.tool_choice === 'none' ? 'disabled' : this.webSearch;
     let session = this.find(request);
     const lease = this.lease(session?.entry); const { entry } = lease; let healthy = false;
     const abort = () => this.discard(entry); signal?.addEventListener('abort', abort, { once: true });
@@ -70,7 +72,7 @@ export class BridgeManager {
       if (!valid(selected)) selected = (await entry.client.models(true)).find(m => (m.model || m.id) === request.model);
       if (!valid(selected)) throw new Error('Model or reasoning effort is unavailable in the Codex catalog');
       request.effort = request.requestedEffort || selected.defaultReasoningEffort;
-      const policy = hash({ account, config, model: request.model, effort: request.effort, system: request.system, tools: request.tools, names: request.toolNames });
+      const policy = hash({ account, config, model: request.model, effort: request.effort, system: request.system, tools: request.tools, names: request.toolNames, webSearch: request.webSearch });
       const continuing = Boolean(session && !session.error && Date.now() - session.lastUsed < this.sessionMs && session.policy === policy && session.matches(request));
       if (session && !continuing) { await this.remove(session); session = null; }
       if (!session) {

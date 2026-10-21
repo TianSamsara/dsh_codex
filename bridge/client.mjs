@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
+import { VERSION } from './protocol.mjs';
 
 export class CodexClient extends EventEmitter {
   constructor({ codex, state, spawnProcess = spawn }) {
@@ -41,7 +42,7 @@ export class CodexClient extends EventEmitter {
     });
   }
   async init() {
-    await this.rpc('initialize', { clientInfo: { name: 'dsh_local_codex_bridge', title: 'Harness Codex bridge', version: '1.1.0' }, capabilities: { experimentalApi: true } });
+    await this.rpc('initialize', { clientInfo: { name: 'dsh_local_codex_bridge', title: 'Harness Codex bridge', version: VERSION }, capabilities: { experimentalApi: true } });
     this.write({ method: 'initialized' });
   }
   async account() {
