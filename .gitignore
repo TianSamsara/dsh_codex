@@ -1,0 +1,8 @@
+node_modules/
+bridge/state/
+bridge/settings.json
+*.log
+*.pid
+.work/
+*.tmp
+.bridge-backups/
