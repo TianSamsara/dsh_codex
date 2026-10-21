@@ -1,11 +1,11 @@
 {
   "name": "dsh-plugin-codex-local-bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "发现、记住并连接本机 Codex 桥接，提供模型选择与自动重连面板",
   "type": "module",
   "main": "index.mjs",
   "exports": { ".": "./index.mjs", "./client": "./client.js", "./package.json": "./package.json", "./cordis.patch.yml": "./cordis.patch.yml", "./locale/*.json": "./locale/*.json" },
-  "files": ["index.mjs", "core.mjs", "bootstrap.mjs", "client.js", "cordis.patch.yml", "icon.svg", "locale", "install.ps1", "install-cli.mjs", "README.md"],
+  "files": ["index.mjs", "core.mjs", "bootstrap.mjs", "updater.mjs", "update-worker.mjs", "client.js", "cordis.patch.yml", "icon.svg", "locale", "install.ps1", "install-cli.mjs", "README.md"],
   "icon": "./icon.svg",
   "license": "MIT",
   "dsh": {

@@ -1,6 +1,6 @@
 # Codex 本地桥接：DeepSeek Harness 插件
 
-版本 **0.3.0**，2026-10-21。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。面板可自动创建并启动桥接，显示桥接版本、进程复用和会话续接状态。
+版本 **0.3.1**，2026-10-21。适配 Windows 的 DeepSeek Harness **0.2.1-rc.2**。面板可自动创建并启动桥接，检查 GitHub 仓库并更新插件。
 
 在侧边栏增加 **Codex 桥接**，在 **插件 → 已安装插件 → Codex 本地桥接** 中提供相同的配置面板。按钮包括自动发现、连接并记住、启动并连接和忘记此连接；支持模型、思考强度、启动时自动连接、桥接离线时自动启动，以及设为新会话默认模型。
 
@@ -33,6 +33,8 @@ Git 安装包包含用于初始化的桥接源码，也可管理**已有的 Harn
 
 ## 发现与记忆
 
+面板下方有 **检查仓库更新 / 更新插件**：比较固定仓库 main 分支的版本和提交，安装检查到的确定提交，保留运行中的桥接和配置。更新完成后任务结束时重启 Harness。GitHub API 限流时使用 Git 回退；同版本的新提交也可更新。需本机 Git；开发用的本地链接不会被覆盖。更新器和日志位于用户存储，不随插件包替换而中断。
+
 - 优先记住的目录及 `DSH_CODEX_BRIDGE_ROOT` 指定的目录；再查找用户 `Documents/Codex/日期/任务/outputs/codex-harness-bridge`。最多查最近 20 个日期、160 个任务目录，不扫描全盘或局域网。
 - 连接地址仅接受 `http://127.0.0.1:端口/v1`；请求不跟随重定向，不将本地密钥发给远程地址。
 - 记忆保存在 `$DSH_HOME/storages/codex-local-bridge/connection.json`（默认 `~/.dsh`），只保存路径、脚本指纹、模型和连接选项，不保存密钥正文。每次连接从桥接目录读取当前密钥，浏览器面板不显示或接收密钥。
@@ -50,6 +52,6 @@ node --test test/*.test.mjs
 
 测试覆盖发现边界、记忆恢复、离线启动、脚本变更保护、模型/档位校验、错误与密钥隐藏，以及客户端入口与动作绑定。自动连接仅获取模型目录，不运行模型推理或消耗测试题额度。
 
-本机验证：29 项自动测试通过；真实空目录初始化使用 Harness 内置 Electron 运行时启动服务、读取 7 个模型，重复执行保留目录和密钥；真实 HTTP 已验证进程与工具会话续接。
+本机验证：38 项自动测试通过；真实仓库检查已验证 API 限流回退；真实空目录初始化使用 Harness 内置 Electron 运行时启动服务、读取 7 个模型，重复执行保留目录和密钥；真实 HTTP 已验证进程与工具会话续接。
 
 实现使用 Harness 的 Cordis Service、公开 Remote 装饰器、客户端 Remote 挂载和 UI Slots，不修改安装目录或 `app.asar`。参考：[官方插件入门](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.md)、[客户端模块](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md)、[插件配置面板](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-plugin-manager/README.md)。
