@@ -30,7 +30,8 @@ $listener = Get-NetTCPConnection -State Listen -LocalAddress 127.0.0.1 -LocalPor
 if ($listener) {
     $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
     $normalizedCommand = ($owner.CommandLine -replace '/', '\').ToLowerInvariant()
-    if (-not $owner -or $normalizedCommand.IndexOf($scriptPath.ToLowerInvariant()) -lt 0 -or $owner.Name -notmatch '^node(?:\.exe)?$') { throw 'Listener identity could not be verified; no process was stopped.' }
+    $runtimeNames = @('node', 'node.exe', [IO.Path]::GetFileName($settings.node))
+    if (-not $owner -or $normalizedCommand.IndexOf($scriptPath.ToLowerInvariant()) -lt 0 -or $owner.Name -notin $runtimeNames) { throw 'Listener identity could not be verified; no process was stopped.' }
 }
 New-Item -ItemType Directory -Path $backup -Force | Out-Null
 foreach ($file in $files) {
@@ -40,7 +41,11 @@ foreach ($file in $files) {
 $nodePath = $settings.node
 if (-not (Test-Path -LiteralPath $nodePath)) { $nodePath = (Get-Command node -ErrorAction Stop).Source }
 function Start-UpdatedBridge {
-    $child = Start-Process -FilePath $nodePath -ArgumentList ('"' + $scriptPath + '"') -WorkingDirectory $targetRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $targetRoot 'bridge.log') -RedirectStandardError (Join-Path $targetRoot 'bridge.error.log') -PassThru
+    $savedNodeMode = $env:ELECTRON_RUN_AS_NODE
+    try {
+        if ($settings.electronNode) { $env:ELECTRON_RUN_AS_NODE = '1' }
+        $child = Start-Process -FilePath $nodePath -ArgumentList ('"' + $scriptPath + '"') -WorkingDirectory $targetRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $targetRoot 'bridge.log') -RedirectStandardError (Join-Path $targetRoot 'bridge.error.log') -PassThru
+    } finally { $env:ELECTRON_RUN_AS_NODE = $savedNodeMode }
     $child.Id | Set-Content -LiteralPath (Join-Path $targetRoot 'bridge.pid')
     return $child
 }
